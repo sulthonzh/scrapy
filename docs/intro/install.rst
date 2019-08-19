@@ -7,18 +7,31 @@ Installation guide
 Installing Scrapy
 =================
 
-Scrapy runs on Python 2.7 and Python 3.3 or above
-(except on Windows where Python 3 is not supported yet).
+Scrapy runs on Python 2.7 and Python 3.4 or above
+under CPython (default Python implementation) and PyPy (starting with PyPy 5.9).
 
-If you’re already familiar with installation of Python packages,
+If you're using `Anaconda`_ or `Miniconda`_, you can install the package from
+the `conda-forge`_ channel, which has up-to-date packages for Linux, Windows
+and OS X.
+
+To install Scrapy using ``conda``, run::
+
+  conda install -c conda-forge scrapy
+
+Alternatively, if you’re already familiar with installation of Python packages,
 you can install Scrapy and its dependencies from PyPI with::
 
     pip install Scrapy
 
+Note that sometimes this may require solving compilation issues for some Scrapy
+dependencies depending on your operating system, so be sure to check the
+:ref:`intro-install-platform-notes`.
+
 We strongly recommend that you install Scrapy in :ref:`a dedicated virtualenv <intro-using-virtualenv>`,
 to avoid conflicting with your system packages.
 
-For more detailed and platform specifics instructions, read on.
+For more detailed and platform specifics instructions, as well as
+troubleshooting information, read on.
 
 
 Things that are good to know
@@ -96,7 +109,7 @@ Python virtualenvs can be created to use Python 2 by default, or Python 3 by def
 
 .. _virtualenv: https://virtualenv.pypa.io
 .. _virtualenv installation instructions: https://virtualenv.pypa.io/en/stable/installation/
-.. _virtualenvwrapper: http://virtualenvwrapper.readthedocs.io/en/latest/install.html
+.. _virtualenvwrapper: https://virtualenvwrapper.readthedocs.io/en/latest/install.html
 .. _user guide: https://virtualenv.pypa.io/en/stable/userguide/
 
 
@@ -105,52 +118,28 @@ Python virtualenvs can be created to use Python 2 by default, or Python 3 by def
 Platform specific installation notes
 ====================================
 
+.. _intro-install-windows:
+
 Windows
 -------
 
-* Install Python 2.7 from https://www.python.org/downloads/
+Though it's possible to install Scrapy on Windows using pip, we recommend you
+to install `Anaconda`_ or `Miniconda`_ and use the package from the
+`conda-forge`_ channel, which will avoid most installation issues.
 
-  You need to adjust ``PATH`` environment variable to include paths to
-  the Python executable and additional scripts. The following paths need to be
-  added to ``PATH``::
+Once you've installed `Anaconda`_ or `Miniconda`_, install Scrapy with::
 
-      C:\Python27\;C:\Python27\Scripts\;
+  conda install -c conda-forge scrapy
 
-  To update the ``PATH`` open a Command prompt and run::
 
-      c:\python27\python.exe c:\python27\tools\scripts\win_add2path.py
+.. _intro-install-ubuntu:
 
-  Close the command prompt window and reopen it so changes take effect, run the
-  following command and check it shows the expected Python version::
-
-      python --version
-
-* Install `pywin32` from http://sourceforge.net/projects/pywin32/
-
-  Be sure you download the architecture (win32 or amd64) that matches your system
-
-* *(Only required for Python<2.7.9)* Install `pip`_ from
-  https://pip.pypa.io/en/latest/installing/
-
-  Now open a Command prompt to check ``pip`` is installed correctly::
-
-      pip --version
-
-* At this point Python 2.7 and ``pip`` package manager must be working, let's
-  install Scrapy::
-
-      pip install Scrapy
-
-.. note::
-     Python 3 is not supported on Windows. This is because Scrapy core requirement Twisted does not support
-     Python 3 on Windows.
-
-Ubuntu 12.04 or above
+Ubuntu 14.04 or above
 ---------------------
 
 Scrapy is currently tested with recent-enough versions of lxml,
 twisted and pyOpenSSL, and is compatible with recent Ubuntu distributions.
-But it should support older versions of Ubuntu too, like Ubuntu 12.04,
+But it should support older versions of Ubuntu too, like Ubuntu 14.04,
 albeit with potential issues with TLS connections.
 
 **Don't** use the ``python-scrapy`` package provided by Ubuntu, they are
@@ -176,9 +165,11 @@ you can install Scrapy with ``pip`` after that::
     pip install scrapy
 
 .. note::
-    The same non-python dependencies can be used to install Scrapy in Debian
-    Wheezy (7.0) and above.
+    The same non-Python dependencies can be used to install Scrapy in Debian
+    Jessie (8.0) and above.
 
+
+.. _intro-install-macos:
 
 Mac OS X
 --------
@@ -199,7 +190,7 @@ solutions:
   that doesn't conflict with the rest of your system. Here's how to do it using
   the `homebrew`_ package manager:
 
-  * Install `homebrew`_ following the instructions in http://brew.sh/
+  * Install `homebrew`_ following the instructions in https://brew.sh/
 
   * Update your ``PATH`` variable to state that homebrew packages should be
     used before system packages (Change ``.bashrc`` to ``.zshrc`` accordantly
@@ -234,27 +225,59 @@ After any of these workarounds you should be able to install Scrapy::
   pip install Scrapy
 
 
-Anaconda
---------
+PyPy
+----
+
+We recommend using the latest PyPy version. The version tested is 5.9.0.
+For PyPy3, only Linux installation was tested.
+
+Most scrapy dependencides now have binary wheels for CPython, but not for PyPy.
+This means that these dependecies will be built during installation.
+On OS X, you are likely to face an issue with building Cryptography dependency,
+solution to this problem is described
+`here <https://github.com/pyca/cryptography/issues/2692#issuecomment-272773481>`_,
+that is to ``brew install openssl`` and then export the flags that this command
+recommends (only needed when installing scrapy). Installing on Linux has no special
+issues besides installing build dependencies.
+Installing scrapy with PyPy on Windows is not tested.
+
+You can check that scrapy is installed correctly by running ``scrapy bench``.
+If this command gives errors such as
+``TypeError: ... got 2 unexpected keyword arguments``, this means
+that setuptools was unable to pick up one PyPy-specific dependency.
+To fix this issue, run ``pip install 'PyPyDispatcher>=2.1.0'``.
 
 
-Using Anaconda is an alternative to using a virtualenv and installing with ``pip``.
+.. _intro-install-troubleshooting:
 
-.. note::
+Troubleshooting
+===============
 
-  For Windows users, or if you have issues installing through ``pip``, this is
-  the recommended way to install Scrapy.
+AttributeError: 'module' object has no attribute 'OP_NO_TLSv1_1'
+----------------------------------------------------------------
 
-If you already have `Anaconda`_ or `Miniconda`_ installed, the `conda-forge`_
-community have up-to-date packages for Linux, Windows and OS X.
+After you install or upgrade Scrapy, Twisted or pyOpenSSL, you may get an
+exception with the following traceback::
 
-To install Scrapy using ``conda``, run::
+    […]
+      File "[…]/site-packages/twisted/protocols/tls.py", line 63, in <module>
+        from twisted.internet._sslverify import _setAcceptableProtocols
+      File "[…]/site-packages/twisted/internet/_sslverify.py", line 38, in <module>
+        TLSVersion.TLSv1_1: SSL.OP_NO_TLSv1_1,
+    AttributeError: 'module' object has no attribute 'OP_NO_TLSv1_1'
 
-  conda install -c conda-forge scrapy
+The reason you get this exception is that your system or virtual environment
+has a version of pyOpenSSL that your version of Twisted does not support.
+
+To install a version of pyOpenSSL that your version of Twisted supports,
+reinstall Twisted with the :code:`tls` extra option::
+
+    pip install twisted[tls]
+
+For details, see `Issue #2473 <https://github.com/scrapy/scrapy/issues/2473>`_.
 
 .. _Python: https://www.python.org/
 .. _pip: https://pip.pypa.io/en/latest/installing/
-.. _Control Panel: https://www.microsoft.com/resources/documentation/windows/xp/all/proddocs/en-us/sysdm_advancd_environmnt_addchange_variable.mspx
 .. _lxml: http://lxml.de/
 .. _parsel: https://pypi.python.org/pypi/parsel
 .. _w3lib: https://pypi.python.org/pypi/w3lib
@@ -263,9 +286,9 @@ To install Scrapy using ``conda``, run::
 .. _pyOpenSSL: https://pypi.python.org/pypi/pyOpenSSL
 .. _setuptools: https://pypi.python.org/pypi/setuptools
 .. _AUR Scrapy package: https://aur.archlinux.org/packages/scrapy/
-.. _homebrew: http://brew.sh/
-.. _zsh: http://www.zsh.org/
-.. _Scrapinghub: http://scrapinghub.com
-.. _Anaconda: http://docs.continuum.io/anaconda/index
-.. _Miniconda: http://conda.pydata.org/docs/install/quick.html
-.. _conda-forge: https://conda-forge.github.io/
+.. _homebrew: https://brew.sh/
+.. _zsh: https://www.zsh.org/
+.. _Scrapinghub: https://scrapinghub.com
+.. _Anaconda: https://docs.anaconda.com/anaconda/
+.. _Miniconda: https://conda.io/docs/user-guide/install/index.html
+.. _conda-forge: https://conda-forge.org/

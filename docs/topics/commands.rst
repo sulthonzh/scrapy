@@ -37,7 +37,7 @@ Scrapy also understands, and can be configured through, a number of environment
 variables. Currently these are:
 
 * ``SCRAPY_SETTINGS_MODULE`` (see :ref:`topics-settings-module-envvar`)
-* ``SCRAPY_PROJECT``
+* ``SCRAPY_PROJECT`` (see :ref:`topics-project-envvar`)
 * ``SCRAPY_PYTHON_SHELL`` (see :ref:`topics-shell`)
 
 .. _topics-project-structure:
@@ -55,6 +55,7 @@ structure by default, similar to this::
    myproject/
        __init__.py
        items.py
+       middlewares.py
        pipelines.py
        settings.py
        spiders/
@@ -69,6 +70,33 @@ the project settings. Here is an example::
 
     [settings]
     default = myproject.settings
+
+.. _topics-project-envvar:
+
+Sharing the root directory between projects
+===========================================
+
+A project root directory, the one that contains the ``scrapy.cfg``, may be
+shared by multiple Scrapy projects, each with its own settings module.
+
+In that case, you must define one or more aliases for those settings modules
+under ``[settings]`` in your ``scrapy.cfg`` file::
+
+    [settings]
+    default = myproject1.settings
+    project1 = myproject1.settings
+    project2 = myproject2.settings
+
+By default, the ``scrapy`` command-line tool will use the ``default`` settings.
+Use the ``SCRAPY_PROJECT`` environment variable to specify a different project
+for ``scrapy`` to use::
+
+    $ scrapy settings --get BOT_NAME
+    Project 1 Bot
+    $ export SCRAPY_PROJECT=project2
+    $ scrapy settings --get BOT_NAME
+    Project 2 Bot
+
 
 Using the ``scrapy`` tool
 =========================
@@ -187,7 +215,7 @@ startproject
 
 Creates a new Scrapy project named ``project_name``, under the ``project_dir``
 directory.
-If ``project_dir`` wasn't specified, ``project_dir`` will be the same as ``myproject``.
+If ``project_dir`` wasn't specified, ``project_dir`` will be the same as ``project_name``.
 
 Usage example::
 
@@ -291,12 +319,12 @@ edit
 * Syntax: ``scrapy edit <spider>``
 * Requires project: *yes*
 
-Edit the given spider using the editor defined in the :setting:`EDITOR`
-setting.
+Edit the given spider using the editor defined in the ``EDITOR`` environment
+variable or (if unset) the :setting:`EDITOR` setting.
 
 This command is provided only as a convenience shortcut for the most common
 case, the developer is of course free to choose any tool or IDE to write and
-debug his spiders.
+debug spiders.
 
 Usage example::
 
@@ -321,6 +349,14 @@ So this command can be used to "see" how your spider would fetch a certain page.
 
 If used outside a project, no particular per-spider behaviour would be applied
 and it will just use the default Scrapy downloader settings.
+
+Supported options:
+
+* ``--spider=SPIDER``: bypass spider autodetection and force use of specific spider
+
+* ``--headers``: print the response's HTTP headers instead of the response's body
+
+* ``--no-redirect``: do not follow HTTP 3xx redirects (default is to follow them)
 
 Usage examples::
 
@@ -350,6 +386,12 @@ Opens the given URL in a browser, as your Scrapy spider would "see" it.
 Sometimes spiders see pages differently from regular users, so this can be used
 to check what the spider "sees" and confirm it's what you expect.
 
+Supported options:
+
+* ``--spider=SPIDER``: bypass spider autodetection and force use of specific spider
+
+* ``--no-redirect``: do not follow HTTP 3xx redirects (default is to follow them)
+
 Usage example::
 
     $ scrapy view http://www.example.com/some/page.html
@@ -368,10 +410,33 @@ given. Also supports UNIX-style local file paths, either relative with
 ``./`` or ``../`` prefixes or absolute file paths.
 See :ref:`topics-shell` for more info.
 
+Supported options:
+
+* ``--spider=SPIDER``: bypass spider autodetection and force use of specific spider
+
+* ``-c code``: evaluate the code in the shell, print the result and exit
+
+* ``--no-redirect``: do not follow HTTP 3xx redirects (default is to follow them);
+  this only affects the URL you may pass as argument on the command line;
+  once you are inside the shell, ``fetch(url)`` will still follow HTTP redirects by default.
+
 Usage example::
 
     $ scrapy shell http://www.example.com/some/page.html
     [ ... scrapy shell starts ... ]
+
+    $ scrapy shell --nolog http://www.example.com/ -c '(response.status, response.url)'
+    (200, 'http://www.example.com/')
+
+    # shell follows HTTP redirects by default
+    $ scrapy shell --nolog http://httpbin.org/redirect-to?url=http%3A%2F%2Fexample.com%2F -c '(response.status, response.url)'
+    (200, 'http://example.com/')
+
+    # you can disable this with --no-redirect
+    # (only for the URL passed as command line argument)
+    $ scrapy shell --no-redirect --nolog http://httpbin.org/redirect-to?url=http%3A%2F%2Fexample.com%2F -c '(response.status, response.url)'
+    (302, 'http://httpbin.org/redirect-to?url=http%3A%2F%2Fexample.com%2F')
+
 
 .. command:: parse
 
@@ -392,6 +457,12 @@ Supported options:
 
 * ``--callback`` or ``-c``: spider method to use as callback for parsing the
   response
+
+* ``--meta`` or ``-m``: additional request meta that will be passed to the callback 
+  request. This must be a valid json string. Example: --meta='{"foo" : "bar"}'
+
+* ``--cbkwargs``: additional keyword arguments that will be passed to the callback.
+  This must be a valid json string. Example: --cbkwargs='{"foo" : "bar"}'
 
 * ``--pipelines``: process items through pipelines
 
@@ -417,9 +488,9 @@ Usage example::
 
     >>> STATUS DEPTH LEVEL 1 <<<
     # Scraped Items  ------------------------------------------------------------
-    [{'name': u'Example item',
-     'category': u'Furniture',
-     'length': u'12 cm'}]
+    [{'name': 'Example item',
+     'category': 'Furniture',
+     'length': '12 cm'}]
 
     # Requests  -----------------------------------------------------------------
     []
@@ -506,7 +577,7 @@ Example::
 
     COMMANDS_MODULE = 'mybot.commands'
 
-.. _Deploying your project: http://scrapyd.readthedocs.org/en/latest/deploy.html
+.. _Deploying your project: https://scrapyd.readthedocs.io/en/latest/deploy.html
 
 Register commands via setup.py entry points
 -------------------------------------------

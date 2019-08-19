@@ -18,24 +18,25 @@ Consider the following scrapy spider below::
             )
 
         def parse(self, response):
-            # collect `item_urls`
+            # <processing code not shown>
+            # collect `item_urls` 
             for item_url in item_urls:
                 yield scrapy.Request(item_url, self.parse_item)
 
         def parse_item(self, response):
+            # <processing code not shown>
             item = MyItem()
             # populate `item` fields
             # and extract item_details_url
-            yield scrapy.Request(item_details_url, self.parse_details, meta={'item': item})
+            yield scrapy.Request(item_details_url, self.parse_details, cb_kwargs={'item': item})
 
-        def parse_details(self, response):
-            item = response.meta['item']
+        def parse_details(self, response, item):
             # populate more `item` fields
             return item
 
 Basically this is a simple spider which parses two pages of items (the
 start_urls). Items also have a details page with additional information, so we
-use the ``meta`` functionality of :class:`~scrapy.http.Request` to pass a
+use the ``cb_kwargs`` functionality of :class:`~scrapy.http.Request` to pass a
 partially populated item.
 
 
@@ -98,8 +99,7 @@ Fortunately, the :command:`shell` is your bread and butter in this case (see
 
     from scrapy.shell import inspect_response
 
-    def parse_details(self, response):
-        item = response.meta.get('item', None)
+    def parse_details(self, response, item=None):
         if item:
             # populate more `item` fields
             return item
@@ -132,8 +132,7 @@ Logging is another useful option for getting information about your spider run.
 Although not as convenient, it comes with the advantage that the logs will be
 available in all future runs should they be necessary again::
 
-    def parse_details(self, response):
-        item = response.meta.get('item', None)
+    def parse_details(self, response, item=None):
         if item:
             # populate more `item` fields
             return item
@@ -142,4 +141,4 @@ available in all future runs should they be necessary again::
 
 For more information, check the :ref:`topics-logging` section.
 
-.. _base tag: http://www.w3schools.com/tags/tag_base.asp
+.. _base tag: https://www.w3schools.com/tags/tag_base.asp

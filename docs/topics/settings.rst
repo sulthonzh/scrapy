@@ -30,6 +30,8 @@ Python `import search path`_.
 
 .. _import search path: https://docs.python.org/2/tutorial/modules.html#the-module-search-path
 
+.. _populating-settings:
+
 Populating the settings
 =======================
 
@@ -178,6 +180,47 @@ Default: ``None``
 The AWS secret key used by code that requires access to `Amazon Web services`_,
 such as the :ref:`S3 feed storage backend <topics-feed-storage-s3>`.
 
+.. setting:: AWS_ENDPOINT_URL
+
+AWS_ENDPOINT_URL
+----------------
+
+Default: ``None``
+
+Endpoint URL used for S3-like storage, for example Minio or s3.scality.
+Only supported with ``botocore`` library.
+
+.. setting:: AWS_USE_SSL
+
+AWS_USE_SSL
+-----------
+
+Default: ``None``
+
+Use this option if you want to disable SSL connection for communication with
+S3 or S3-like storage. By default SSL will be used.
+Only supported with ``botocore`` library.
+
+.. setting:: AWS_VERIFY
+
+AWS_VERIFY
+----------
+
+Default: ``None``
+
+Verify SSL connection between Scrapy and S3 or S3-like storage. By default
+SSL verification will occur. Only supported with ``botocore`` library.
+
+.. setting:: AWS_REGION_NAME
+
+AWS_REGION_NAME
+---------------
+
+Default: ``None``
+
+The name of the region associated with the AWS client.
+Only supported with ``botocore`` library.
+
 .. setting:: BOT_NAME
 
 BOT_NAME
@@ -290,33 +333,22 @@ Default: ``0``
 
 Scope: ``scrapy.spidermiddlewares.depth.DepthMiddleware``
 
-An integer that is used to adjust the request priority based on its depth:
+An integer that is used to adjust the :attr:`~scrapy.http.Request.priority` of
+a :class:`~scrapy.http.Request` based on its depth.
 
-- if zero (default), no priority adjustment is made from depth
-- **a positive value will decrease the priority, i.e. higher depth
-  requests will be processed later** ; this is commonly used when doing
-  breadth-first crawls (BFO)
-- a negative value will increase priority, i.e., higher depth requests
-  will be processed sooner (DFO)
+The priority of a request is adjusted as follows::
 
-See also: :ref:`faq-bfo-dfo` about tuning Scrapy for BFO or DFO.
+    request.priority = request.priority - ( depth * DEPTH_PRIORITY )
+
+As depth increases, positive values of ``DEPTH_PRIORITY`` decrease request
+priority (BFO), while negative values increase request priority (DFO). See
+also :ref:`faq-bfo-dfo`.
 
 .. note::
 
     This setting adjusts priority **in the opposite way** compared to
     other priority settings :setting:`REDIRECT_PRIORITY_ADJUST`
     and :setting:`RETRY_PRIORITY_ADJUST`.
-
-.. setting:: DEPTH_STATS
-
-DEPTH_STATS
------------
-
-Default: ``True``
-
-Scope: ``scrapy.spidermiddlewares.depth.DepthMiddleware``
-
-Whether to collect maximum depth stats.
 
 .. setting:: DEPTH_STATS_VERBOSE
 
@@ -468,7 +500,6 @@ Default::
         'scrapy.downloadermiddlewares.redirect.RedirectMiddleware': 600,
         'scrapy.downloadermiddlewares.cookies.CookiesMiddleware': 700,
         'scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware': 750,
-        'scrapy.downloadermiddlewares.chunked.ChunkedTransferMiddleware': 830,
         'scrapy.downloadermiddlewares.stats.DownloaderStats': 850,
         'scrapy.downloadermiddlewares.httpcache.HttpCacheMiddleware': 900,
     }
@@ -508,6 +539,8 @@ amount of time between requests, but uses a random interval between 0.5 * :setti
 
 When :setting:`CONCURRENT_REQUESTS_PER_IP` is non-zero, delays are enforced
 per ip address instead of per domain.
+
+.. _spider-download_delay-attribute:
 
 You can also change this setting per spider by setting ``download_delay``
 spider attribute.
@@ -570,7 +603,7 @@ The amount of time (in secs) that the downloader will wait before timing out.
 DOWNLOAD_MAXSIZE
 ----------------
 
-Default: `1073741824` (1024MB)
+Default: ``1073741824`` (1024MB)
 
 The maximum response size (in bytes) that downloader will download.
 
@@ -591,7 +624,7 @@ If you want to disable it set to 0.
 DOWNLOAD_WARNSIZE
 -----------------
 
-Default: `33554432` (32MB)
+Default: ``33554432`` (32MB)
 
 The response size (in bytes) that downloader will start to warn.
 
@@ -604,6 +637,32 @@ If you want to disable it set to 0.
     Request.meta key.
 
     This feature needs Twisted >= 11.1.
+
+.. setting:: DOWNLOAD_FAIL_ON_DATALOSS
+
+DOWNLOAD_FAIL_ON_DATALOSS
+-------------------------
+
+Default: ``True``
+
+Whether or not to fail on broken responses, that is, declared
+``Content-Length`` does not match content sent by the server or chunked
+response was not properly finish. If ``True``, these responses raise a
+``ResponseFailed([_DataLoss])`` error. If ``False``, these responses
+are passed through and the flag ``dataloss`` is added to the response, i.e.:
+``'dataloss' in response.flags`` is ``True``.
+
+Optionally, this can be set per-request basis by using the
+:reqmeta:`download_fail_on_dataloss` Request.meta key to ``False``.
+
+.. note::
+
+  A broken response, or data loss error, may happen under several
+  circumstances, from server misconfiguration to network errors to data
+  corruption. It is up to the user to decide if it makes sense to process
+  broken responses considering they may contain partial or incomplete content.
+  If :setting:`RETRY_ENABLED` is ``True`` and this setting is set to ``True``,
+  the ``ResponseFailed([_DataLoss])`` failure will be retried as usual.
 
 .. setting:: DUPEFILTER_CLASS
 
@@ -621,6 +680,13 @@ override its ``request_fingerprint`` method. This method should accept
 scrapy :class:`~scrapy.http.Request` object and return its fingerprint
 (a string).
 
+You can disable filtering of duplicate requests by setting
+:setting:`DUPEFILTER_CLASS` to ``'scrapy.dupefilters.BaseDupeFilter'``.
+Be very careful about this however, because you can get into crawling loops.
+It's usually a better idea to set the ``dont_filter`` parameter to
+``True`` on the specific :class:`~scrapy.http.Request` that should not be
+filtered.
+
 .. setting:: DUPEFILTER_DEBUG
 
 DUPEFILTER_DEBUG
@@ -636,11 +702,11 @@ Setting :setting:`DUPEFILTER_DEBUG` to ``True`` will make it log all duplicate r
 EDITOR
 ------
 
-Default: `depends on the environment`
+Default: ``vi`` (on Unix systems) or the IDLE editor (on Windows)
 
-The editor to use for editing spiders with the :command:`edit` command. It
-defaults to the ``EDITOR`` environment variable, if set. Otherwise, it defaults
-to ``vi`` (on Unix systems) or the IDLE editor (on Windows).
+The editor to use for editing spiders with the :command:`edit` command.
+Additionally, if the ``EDITOR`` environment variable is set, the :command:`edit`
+command will prefer it over the default setting.
 
 .. setting:: EXTENSIONS
 
@@ -687,6 +753,42 @@ The Feed Temp dir allows you to set a custom folder to save crawler
 temporary files before uploading with :ref:`FTP feed storage <topics-feed-storage-ftp>` and
 :ref:`Amazon S3 <topics-feed-storage-s3>`.
 
+.. setting:: FTP_PASSIVE_MODE
+
+FTP_PASSIVE_MODE
+----------------
+
+Default: ``True``
+
+Whether or not to use passive mode when initiating FTP transfers.
+
+.. setting:: FTP_PASSWORD
+
+FTP_PASSWORD
+------------
+
+Default: ``"guest"``
+
+The password to use for FTP connections when there is no ``"ftp_password"``
+in ``Request`` meta.
+
+.. note::
+    Paraphrasing `RFC 1635`_, although it is common to use either the password
+    "guest" or one's e-mail address for anonymous FTP,
+    some FTP servers explicitly ask for the user's e-mail address
+    and will not allow login with the "guest" password.
+
+.. _RFC 1635: https://tools.ietf.org/html/rfc1635
+
+.. setting:: FTP_USER
+
+FTP_USER
+--------
+
+Default: ``"anonymous"``
+
+The username to use for FTP connections when there is no ``"ftp_user"``
+in ``Request`` meta.
 
 .. setting:: ITEM_PIPELINES
 
@@ -786,8 +888,28 @@ LOG_STDOUT
 Default: ``False``
 
 If ``True``, all standard output (and error) of your process will be redirected
-to the log. For example if you ``print 'hello'`` it will appear in the Scrapy
+to the log. For example if you ``print('hello')`` it will appear in the Scrapy
 log.
+
+.. setting:: LOG_SHORT_NAMES
+
+LOG_SHORT_NAMES
+---------------
+
+Default: ``False``
+
+If ``True``, the logs will just contain the root path. If it is set to ``False``
+then it displays the component responsible for the log output
+
+.. setting:: LOGSTATS_INTERVAL
+
+LOGSTATS_INTERVAL
+-----------------
+
+Default: ``60.0``
+
+The interval (in seconds) between each logging printout of the stats 
+by :class:`~extensions.logstats.LogStats`.
 
 .. setting:: MEMDEBUG_ENABLED
 
@@ -818,13 +940,15 @@ Example::
 MEMUSAGE_ENABLED
 ----------------
 
-Default: ``False``
+Default: ``True``
 
 Scope: ``scrapy.extensions.memusage``
 
-Whether to enable the memory usage extension that will shutdown the Scrapy
-process when it exceeds a memory limit, and also notify by email when that
-happened.
+Whether to enable the memory usage extension. This extension keeps track of
+a peak memory used by the process (it writes it to stats). It can also
+optionally shutdown the Scrapy process when it exceeds a memory limit
+(see :setting:`MEMUSAGE_LIMIT_MB`), and notify by email when that happened
+(see :setting:`MEMUSAGE_NOTIFY_MAIL`).
 
 See :ref:`topics-extensions-ref-memusage`.
 
@@ -879,19 +1003,6 @@ Example::
 
 See :ref:`topics-extensions-ref-memusage`.
 
-.. setting:: MEMUSAGE_REPORT
-
-MEMUSAGE_REPORT
----------------
-
-Default: ``False``
-
-Scope: ``scrapy.extensions.memusage``
-
-Whether to send a memory usage report after each spider has been closed.
-
-See :ref:`topics-extensions-ref-memusage`.
-
 .. setting:: MEMUSAGE_WARNING_MB
 
 MEMUSAGE_WARNING_MB
@@ -935,7 +1046,7 @@ The randomization policy is the same used by `wget`_ ``--random-wait`` option.
 
 If :setting:`DOWNLOAD_DELAY` is zero (default) this option has no effect.
 
-.. _wget: http://www.gnu.org/software/wget/manual/wget.html
+.. _wget: https://www.gnu.org/software/wget/manual/wget.html
 
 .. setting:: REACTOR_THREADPOOL_MAXSIZE
 
@@ -1028,10 +1139,44 @@ Stats counter (``scheduler/unserializable``) tracks the number of times this hap
 
 Example entry in logs::
 
-    1956-01-31 00:00:00+0800 [scrapy] ERROR: Unable to serialize request:
+    1956-01-31 00:00:00+0800 [scrapy.core.scheduler] ERROR: Unable to serialize request:
     <GET http://example.com> - reason: cannot serialize <Request at 0x9a7c7ec>
     (type Request)> - no more unserializable requests will be logged
     (see 'scheduler/unserializable' stats counter)
+
+
+.. setting:: SCHEDULER_DISK_QUEUE
+
+SCHEDULER_DISK_QUEUE
+--------------------
+
+Default: ``'scrapy.squeues.PickleLifoDiskQueue'``
+
+Type of disk queue that will be used by scheduler. Other available types are
+``scrapy.squeues.PickleFifoDiskQueue``, ``scrapy.squeues.MarshalFifoDiskQueue``,
+``scrapy.squeues.MarshalLifoDiskQueue``.
+
+.. setting:: SCHEDULER_MEMORY_QUEUE
+
+SCHEDULER_MEMORY_QUEUE
+----------------------
+Default: ``'scrapy.squeues.LifoMemoryQueue'``
+
+Type of in-memory queue used by scheduler. Other available type is:
+``scrapy.squeues.FifoMemoryQueue``.
+
+.. setting:: SCHEDULER_PRIORITY_QUEUE
+
+SCHEDULER_PRIORITY_QUEUE
+------------------------
+Default: ``'scrapy.pqueues.ScrapyPriorityQueue'``
+
+Type of priority queue used by the scheduler. Another available type is
+``scrapy.pqueues.DownloaderAwarePriorityQueue``.
+``scrapy.pqueues.DownloaderAwarePriorityQueue`` works better than
+``scrapy.pqueues.ScrapyPriorityQueue`` when you crawl many different
+domains in parallel. But currently ``scrapy.pqueues.DownloaderAwarePriorityQueue``
+does not work together with :setting:`CONCURRENT_REQUESTS_PER_IP`.
 
 .. setting:: SPIDER_CONTRACTS
 
@@ -1077,6 +1222,29 @@ Default: ``'scrapy.spiderloader.SpiderLoader'``
 
 The class that will be used for loading spiders, which must implement the
 :ref:`topics-api-spiderloader`.
+
+.. setting:: SPIDER_LOADER_WARN_ONLY
+
+SPIDER_LOADER_WARN_ONLY
+-----------------------
+
+.. versionadded:: 1.3.3
+
+Default: ``False``
+
+By default, when scrapy tries to import spider classes from :setting:`SPIDER_MODULES`,
+it will fail loudly if there is any ``ImportError`` exception.
+But you can choose to silence this exception and turn it into a simple
+warning by setting ``SPIDER_LOADER_WARN_ONLY = True``.
+
+.. note::
+    Some :ref:`scrapy commands <topics-commands>` run with this setting to ``True``
+    already (i.e. they will only issue a warning and will not fail)
+    since they do not actually need to load spider classes to work:
+    :command:`scrapy runspider <runspider>`,
+    :command:`scrapy settings <settings>`,
+    :command:`scrapy startproject <startproject>`,
+    :command:`scrapy version <version>`.
 
 .. setting:: SPIDER_MIDDLEWARES
 
@@ -1198,14 +1366,14 @@ Default: ``2083``
 Scope: ``spidermiddlewares.urllength``
 
 The maximum URL length to allow for crawled URLs. For more information about
-the default value for this setting see: http://www.boutell.com/newfaq/misc/urllength.html
+the default value for this setting see: https://boutell.com/newfaq/misc/urllength.html
 
 .. setting:: USER_AGENT
 
 USER_AGENT
 ----------
 
-Default: ``"Scrapy/VERSION (+http://scrapy.org)"``
+Default: ``"Scrapy/VERSION (+https://scrapy.org)"``
 
 The default User-Agent to use when crawling, unless overridden.
 

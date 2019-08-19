@@ -1,4 +1,5 @@
 from __future__ import print_function
+import json
 import logging
 
 from w3lib.url import is_url
@@ -48,11 +49,14 @@ class Command(ScrapyCommand):
             help="use CrawlSpider rules to discover the callback")
         parser.add_option("-c", "--callback", dest="callback",
             help="use this callback for parsing, instead looking for a callback")
+        parser.add_option("-m", "--meta", dest="meta",
+            help="inject extra meta into the Request, it must be a valid raw json string")
+        parser.add_option("--cbkwargs", dest="cbkwargs",
+            help="inject extra callback kwargs into the Request, it must be a valid raw json string")
         parser.add_option("-d", "--depth", dest="depth", type="int", default=1,
             help="maximum depth for parsing requests [default: %default]")
         parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
             help="print each depth level one by one")
-
 
     @property
     def max_level(self):
@@ -108,10 +112,11 @@ class Command(ScrapyCommand):
             if not opts.nolinks:
                 self.print_requests(colour=colour)
 
-    def run_callback(self, response, cb):
+    def run_callback(self, response, callback, cb_kwargs=None):
+        cb_kwargs = cb_kwargs or {}
         items, requests = [], []
 
-        for x in iterate_spider_output(cb(response)):
+        for x in iterate_spider_output(callback(response, **cb_kwargs)):
             if isinstance(x, (BaseItem, dict)):
                 items.append(x)
             elif isinstance(x, Request):
@@ -139,10 +144,10 @@ class Command(ScrapyCommand):
         else:
             self.spidercls = spidercls_for_request(spider_loader, Request(url))
             if not self.spidercls:
-                logger.error('Unable to find spider for: %(url)s',
-                             {'url': url})
+                logger.error('Unable to find spider for: %(url)s', {'url': url})
 
-        request = Request(url, opts.callback)
+        # Request requires callback argument as callable or None, not string
+        request = Request(url, None)
         _start_requests = lambda s: [self.prepare_request(s, request, opts)]
         self.spidercls.start_requests = _start_requests
 
@@ -156,7 +161,7 @@ class Command(ScrapyCommand):
                          {'url': url})
 
     def prepare_request(self, spider, request, opts):
-        def callback(response):
+        def callback(response, **cb_kwargs):
             # memorize first request
             if not self.first_response:
                 self.first_response = response
@@ -164,12 +169,14 @@ class Command(ScrapyCommand):
             # determine real callback
             cb = response.meta['_callback']
             if not cb:
-                if opts.rules and self.first_response == response:
+                if opts.callback:
+                    cb = opts.callback
+                elif opts.rules and self.first_response == response:
                     cb = self.get_callback_from_rules(spider, response)
 
                     if not cb:
                         logger.error('Cannot find a rule that matches %(url)r in spider: %(spider)s',
-                                 {'url': response.url, 'spider': spider.name})
+                                     {'url': response.url, 'spider': spider.name})
                         return
                 else:
                     cb = 'parse'
@@ -186,7 +193,7 @@ class Command(ScrapyCommand):
             # parse items and requests
             depth = response.meta['_depth']
 
-            items, requests = self.run_callback(response, cb)
+            items, requests = self.run_callback(response, cb, cb_kwargs)
             if opts.pipelines:
                 itemproc = self.pcrawler.engine.scraper.itemproc
                 for item in items:
@@ -201,6 +208,14 @@ class Command(ScrapyCommand):
                     req.callback = callback
                 return requests
 
+        # update request meta if any extra meta was passed through the --meta/-m opts.
+        if opts.meta:
+            request.meta.update(opts.meta)
+
+        # update cb_kwargs if any extra values were was passed through the --cbkwargs option.
+        if opts.cbkwargs:
+            request.cb_kwargs.update(opts.cbkwargs)
+
         request.meta['_depth'] = 1
         request.meta['_callback'] = request.callback
         request.callback = callback
@@ -208,10 +223,32 @@ class Command(ScrapyCommand):
 
     def process_options(self, args, opts):
         ScrapyCommand.process_options(self, args, opts)
+
+        self.process_spider_arguments(opts)
+        self.process_request_meta(opts)
+        self.process_request_cb_kwargs(opts)
+
+    def process_spider_arguments(self, opts):
         try:
             opts.spargs = arglist_to_dict(opts.spargs)
         except ValueError:
             raise UsageError("Invalid -a value, use -a NAME=VALUE", print_help=False)
+
+    def process_request_meta(self, opts):
+        if opts.meta:
+            try:
+                opts.meta = json.loads(opts.meta)
+            except ValueError:
+                raise UsageError("Invalid -m/--meta value, pass a valid json string to -m or --meta. "
+                                 "Example: --meta='{\"foo\" : \"bar\"}'", print_help=False)
+
+    def process_request_cb_kwargs(self, opts):
+        if opts.cbkwargs:
+            try:
+                opts.cbkwargs = json.loads(opts.cbkwargs)
+            except ValueError:
+                raise UsageError("Invalid --cbkwargs value, pass a valid json string to --cbkwargs. "
+                                 "Example: --cbkwargs='{\"foo\" : \"bar\"}'", print_help=False)
 
     def run(self, args, opts):
         # parse arguments

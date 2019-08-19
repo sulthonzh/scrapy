@@ -24,7 +24,7 @@ below in :ref:`topics-request-response-ref-request-subclasses` and
 Request objects
 ===============
 
-.. class:: Request(url[, callback, method='GET', headers, body, cookies, meta, encoding='utf-8', priority=0, dont_filter=False, errback])
+.. class:: Request(url[, callback, method='GET', headers, body, cookies, meta, encoding='utf-8', priority=0, dont_filter=False, errback, flags, cb_kwargs])
 
     A :class:`Request` object represents an HTTP request, which is usually
     generated in the Spider and executed by the Downloader, and thus generating
@@ -50,7 +50,7 @@ Request objects
     :type meta: dict
 
     :param body: the request body. If a ``unicode`` is passed, then it's encoded to
-      ``str`` using the `encoding` passed (which defaults to ``utf-8``). If
+      ``str`` using the ``encoding`` passed (which defaults to ``utf-8``). If
       ``body`` is not given, an empty string is stored. Regardless of the
       type of this argument, the final value stored will be a ``str`` (never
       ``unicode`` or ``None``).
@@ -79,6 +79,8 @@ Request objects
         The latter form allows for customizing the ``domain`` and ``path``
         attributes of the cookie. This is only useful if the cookies are saved
         for later requests.
+
+        .. reqmeta:: dont_merge_cookies
 
         When some site returns cookies (in a response) those are stored in the
         cookies for that domain and will be sent again in future requests. That's
@@ -121,6 +123,12 @@ Request objects
        see :ref:`topics-request-response-ref-errbacks` below.
     :type errback: callable
 
+    :param flags:  Flags sent to the request, can be used for logging or similar purposes.
+    :type flags: list
+
+    :param cb_kwargs: A dict with arbitrary data that will be passed as keyword arguments to the Request's callback.
+    :type cb_kwargs: dict
+
     .. attribute:: Request.url
 
         A string containing the URL of this request. Keep in mind that this
@@ -160,6 +168,17 @@ Request objects
         ``copy()`` or ``replace()`` methods, and can also be accessed, in your
         spider, from the ``response.meta`` attribute.
 
+    .. attribute:: Request.cb_kwargs
+
+        A dictionary that contains arbitrary metadata for this request. Its contents
+        will be passed to the Request's callback as keyword arguments. It is empty
+        for new Requests, which means by default callbacks only get a :class:`Response`
+        object as argument.
+
+        This dict is `shallow copied`_ when the request is cloned using the
+        ``copy()`` or ``replace()`` methods, and can also be accessed, in your
+        spider, from the ``response.cb_kwargs`` attribute.
+
     .. _shallow copied: https://docs.python.org/2/library/copy.html
 
     .. method:: Request.copy()
@@ -167,12 +186,12 @@ Request objects
        Return a new Request which is a copy of this Request. See also:
        :ref:`topics-request-response-ref-request-callback-arguments`.
 
-    .. method:: Request.replace([url, method, headers, body, cookies, meta, encoding, dont_filter, callback, errback])
+    .. method:: Request.replace([url, method, headers, body, cookies, meta, flags, encoding, priority, dont_filter, callback, errback, cb_kwargs])
 
        Return a Request object with the same members, except for those members
        given new values by whichever keyword arguments are specified. The
-       attribute :attr:`Request.meta` is copied by default (unless a new value
-       is given in the ``meta`` argument). See also
+       :attr:`Request.cb_kwargs` and :attr:`Request.meta` attributes are shallow
+       copied by default (unless new values are given as arguments). See also
        :ref:`topics-request-response-ref-request-callback-arguments`.
 
 .. _topics-request-response-ref-request-callback-arguments:
@@ -195,25 +214,31 @@ Example::
         self.logger.info("Visited %s", response.url)
 
 In some cases you may be interested in passing arguments to those callback
-functions so you can receive the arguments later, in the second callback. You
-can use the :attr:`Request.meta` attribute for that.
+functions so you can receive the arguments later, in the second callback.
+The following example shows how to achieve this by using the
+:attr:`Request.cb_kwargs` attribute:
 
-Here's an example of how to pass an item using this mechanism, to populate
-different fields from different pages::
+::
 
-    def parse_page1(self, response):
-        item = MyItem()
-        item['main_url'] = response.url
-        request = scrapy.Request("http://www.example.com/some_page.html",
-                                 callback=self.parse_page2)
-        request.meta['item'] = item
-        return request
+    def parse(self, response):
+        request = scrapy.Request('http://www.example.com/index.html',
+                                 callback=self.parse_page2,
+                                 cb_kwargs=dict(main_url=response.url))
+        request.cb_kwargs['foo'] = 'bar'  # add more arguments for the callback
+        yield request
 
-    def parse_page2(self, response):
-        item = response.meta['item']
-        item['other_url'] = response.url
-        return item
+    def parse_page2(self, response, main_url, foo):
+        yield dict(
+            main_url=main_url,
+            other_url=response.url,
+            foo=foo,
+        )
 
+.. caution:: :attr:`Request.cb_kwargs` was introduced in version ``1.7``.
+   Prior to that, using :attr:`Request.meta` was recommended for passing
+   information around callbacks. After ``1.7``, :attr:`Request.cb_kwargs`
+   became the preferred way for handling user information, leaving :attr:`Request.meta`
+   for communication with components like middlewares and extensions.
 
 .. _topics-request-response-ref-errbacks:
 
@@ -291,16 +316,22 @@ Those are:
 * :reqmeta:`dont_retry`
 * :reqmeta:`handle_httpstatus_list`
 * :reqmeta:`handle_httpstatus_all`
-* ``dont_merge_cookies`` (see ``cookies`` parameter of :class:`Request` constructor)
+* :reqmeta:`dont_merge_cookies`
 * :reqmeta:`cookiejar`
 * :reqmeta:`dont_cache`
+* :reqmeta:`redirect_reasons`
 * :reqmeta:`redirect_urls`
 * :reqmeta:`bindaddress`
 * :reqmeta:`dont_obey_robotstxt`
 * :reqmeta:`download_timeout`
 * :reqmeta:`download_maxsize`
 * :reqmeta:`download_latency`
+* :reqmeta:`download_fail_on_dataloss`
 * :reqmeta:`proxy`
+* ``ftp_user`` (See :setting:`FTP_USER` for more info)
+* ``ftp_password`` (See :setting:`FTP_PASSWORD` for more info)
+* :reqmeta:`referrer_policy`
+* :reqmeta:`max_retry_times`
 
 .. reqmeta:: bindaddress
 
@@ -326,6 +357,23 @@ The amount of time spent to fetch the response, since the request has been
 started, i.e. HTTP message sent over the network. This meta key only becomes
 available when the response has been downloaded. While most other meta keys are
 used to control Scrapy behavior, this one is supposed to be read-only.
+
+.. reqmeta:: download_fail_on_dataloss
+
+download_fail_on_dataloss
+-------------------------
+
+Whether or not to fail on broken responses. See:
+:setting:`DOWNLOAD_FAIL_ON_DATALOSS`.
+
+.. reqmeta:: max_retry_times
+
+max_retry_times
+---------------
+
+The meta key is used set retry times per request. When initialized, the
+:reqmeta:`max_retry_times` meta key takes higher precedence over the
+:setting:`RETRY_TIMES` setting.
 
 .. _topics-request-response-ref-request-subclasses:
 
@@ -358,7 +406,7 @@ fields with form data from :class:`Response` objects.
     The :class:`FormRequest` objects support the following class method in
     addition to the standard :class:`Request` methods:
 
-    .. classmethod:: FormRequest.from_response(response, [formname=None, formnumber=0, formdata=None, formxpath=None, formcss=None, clickdata=None, dont_click=False, ...])
+    .. classmethod:: FormRequest.from_response(response, [formname=None, formid=None, formnumber=0, formdata=None, formxpath=None, formcss=None, clickdata=None, dont_click=False, ...])
 
        Returns a new :class:`FormRequest` object with its form field values
        pre-populated with those found in the HTML ``<form>`` element contained
@@ -376,12 +424,19 @@ fields with form data from :class:`Response` objects.
        control clicked (instead of disabling it) you can also use the
        ``clickdata`` argument.
 
+       .. caution:: Using this method with select elements which have leading
+          or trailing whitespace in the option values will not work due to a
+          `bug in lxml`_, which should be fixed in lxml 3.8 and above.
+
        :param response: the response containing a HTML form which will be used
           to pre-populate the form fields
        :type response: :class:`Response` object
 
        :param formname: if given, the form with name attribute set to this value will be used.
        :type formname: string
+
+       :param formid: if given, the form with id attribute set to this value will be used.
+       :type formid: string
 
        :param formxpath: if given, the first form that matches the xpath will be used.
        :type formxpath: string
@@ -395,7 +450,9 @@ fields with form data from :class:`Response` objects.
 
        :param formdata: fields to override in the form data. If a field was
           already present in the response ``<form>`` element, its value is
-          overridden by the one passed in this parameter.
+          overridden by the one passed in this parameter. If a value passed in
+          this parameter is ``None``, the field will not be included in the
+          request, even if it was present in the response ``<form>`` element.
        :type formdata: dict
 
        :param clickdata: attributes to lookup the control clicked. If it's not
@@ -420,6 +477,9 @@ fields with form data from :class:`Response` objects.
 
        .. versionadded:: 1.1.0
           The ``formcss`` parameter.
+
+       .. versionadded:: 1.1.0
+          The ``formid`` parameter.
 
 Request usage examples
 ----------------------
@@ -450,6 +510,11 @@ method for this job. Here's an example spider which uses it::
 
     import scrapy
 
+    def authentication_failed(response):
+        # TODO: Check the contents of the response and return True if it failed
+        # or False if it succeeded.
+        pass
+
     class LoginSpider(scrapy.Spider):
         name = 'example.com'
         start_urls = ['http://www.example.com/users/login.php']
@@ -462,12 +527,49 @@ method for this job. Here's an example spider which uses it::
             )
 
         def after_login(self, response):
-            # check login succeed before going on
-            if "authentication failed" in response.body:
+            if authentication_failed(response):
                 self.logger.error("Login failed")
                 return
 
             # continue scraping with authenticated session...
+
+JSONRequest
+-----------
+
+The JSONRequest class extends the base :class:`Request` class with functionality for
+dealing with JSON requests.
+
+.. class:: JSONRequest(url, [... data, dumps_kwargs])
+
+   The :class:`JSONRequest` class adds two new argument to the constructor. The
+   remaining arguments are the same as for the :class:`Request` class and are
+   not documented here.
+
+   Using the :class:`JSONRequest` will set the ``Content-Type`` header to ``application/json``
+   and ``Accept`` header to ``application/json, text/javascript, */*; q=0.01``
+
+   :param data: is any JSON serializable object that needs to be JSON encoded and assigned to body.
+      if :attr:`Request.body` argument is provided this parameter will be ignored.
+      if :attr:`Request.body` argument is not provided and data argument is provided :attr:`Request.method` will be 
+      set to ``'POST'`` automatically.
+   :type data: JSON serializable object
+
+   :param dumps_kwargs: Parameters that will be passed to underlying `json.dumps`_ method which is used to serialize
+       data into JSON format.
+   :type dumps_kwargs: dict
+
+.. _json.dumps: https://docs.python.org/3/library/json.html#json.dumps
+
+JSONRequest usage example
+-------------------------
+
+Sending a JSON POST request with a JSON payload::
+
+   data = {
+       'name1': 'value1',
+       'name2': 'value2',
+   }
+   yield JSONRequest(url='http://www.example.com/post/action', data=data)
 
 
 Response objects
@@ -488,11 +590,11 @@ Response objects
        (for single valued headers) or lists (for multi-valued headers).
     :type headers: dict
 
-    :param body: the response body. It must be str, not unicode, unless you're
-       using a encoding-aware :ref:`Response subclass
-       <topics-request-response-ref-response-subclasses>`, such as
-       :class:`TextResponse`.
-    :type body: str
+    :param body: the response body. To access the decoded text as str (unicode
+       in Python 2) you can use ``response.text`` from an encoding-aware
+       :ref:`Response subclass <topics-request-response-ref-response-subclasses>`,
+       such as :class:`TextResponse`.
+    :type body: bytes
 
     :param flags: is a list containing the initial values for the
        :attr:`Response.flags` attribute. If given, the list will be shallow
@@ -567,7 +669,7 @@ Response objects
     .. attribute:: Response.flags
 
         A list that contains flags for this response. Flags are labels used for
-        tagging Responses. For example: `'cached'`, `'redirected`', etc. And
+        tagging Responses. For example: ``'cached'``, ``'redirected``', etc. And
         they're shown on the string representation of the Response (`__str__`
         method) which is used by the engine for logging.
 
@@ -590,6 +692,9 @@ Response objects
         making this call::
 
             urlparse.urljoin(response.url, url)
+
+    .. automethod:: Response.follow
+
 
 .. _urlparse.urljoin: https://docs.python.org/2/library/urlparse.html#urlparse.urljoin
 
@@ -636,7 +741,7 @@ TextResponse objects
 
             ``unicode(response.body)`` is not a correct way to convert response
             body to unicode: you would be using the system default encoding
-            (typically `ascii`) instead of the response encoding.
+            (typically ``ascii``) instead of the response encoding.
 
 
     .. attribute:: TextResponse.encoding
@@ -644,7 +749,7 @@ TextResponse objects
        A string with the encoding of this response. The encoding is resolved by
        trying the following mechanisms, in order:
 
-       1. the encoding passed in the constructor `encoding` argument
+       1. the encoding passed in the constructor ``encoding`` argument
 
        2. the encoding declared in the Content-Type HTTP header. If this
           encoding is not valid (ie. unknown), it is ignored and the next
@@ -677,10 +782,12 @@ TextResponse objects
 
             response.css('p')
 
+    .. automethod:: TextResponse.follow
+
     .. method:: TextResponse.body_as_unicode()
 
         The same as :attr:`text`, but available as a method. This method is
-        kept for backwards compatibility; please prefer ``response.text``.
+        kept for backward compatibility; please prefer ``response.text``.
 
 
 HtmlResponse objects
@@ -692,7 +799,7 @@ HtmlResponse objects
     which adds encoding auto-discovering support by looking into the HTML `meta
     http-equiv`_ attribute.  See :attr:`TextResponse.encoding`.
 
-.. _meta http-equiv: http://www.w3schools.com/TAGS/att_meta_http_equiv.asp
+.. _meta http-equiv: https://www.w3schools.com/TAGS/att_meta_http_equiv.asp
 
 XmlResponse objects
 -------------------
@@ -704,3 +811,4 @@ XmlResponse objects
     line.  See :attr:`TextResponse.encoding`.
 
 .. _Twisted Failure: https://twistedmatrix.com/documents/current/api/twisted.python.failure.Failure.html
+.. _bug in lxml: https://bugs.launchpad.net/lxml/+bug/1665241

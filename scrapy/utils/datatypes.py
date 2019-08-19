@@ -6,11 +6,18 @@ This module must not depend on any module outside the Standard Library.
 """
 
 import copy
-import six
+import collections
 import warnings
-from collections import OrderedDict
+
+import six
 
 from scrapy.exceptions import ScrapyDeprecationWarning
+
+
+if six.PY2:
+    Mapping = collections.Mapping
+else:
+    Mapping = collections.abc.Mapping
 
 
 class MultiValueDictKeyError(KeyError):
@@ -224,7 +231,7 @@ class CaselessDict(dict):
         return dict.setdefault(self, self.normkey(key), self.normvalue(def_val))
 
     def update(self, seq):
-        seq = seq.items() if isinstance(seq, dict) else seq
+        seq = seq.items() if isinstance(seq, Mapping) else seq
         iseq = ((self.normkey(k), self.normvalue(v)) for k, v in seq)
         super(CaselessDict, self).update(iseq)
 
@@ -245,6 +252,13 @@ class MergeDict(object):
     first occurrence will be used.
     """
     def __init__(self, *dicts):
+        if not six.PY2:
+            warnings.warn(
+                "scrapy.utils.datatypes.MergeDict is deprecated in favor "
+                "of collections.ChainMap (introduced in Python 3.3)",
+                category=ScrapyDeprecationWarning,
+                stacklevel=2,
+            )
         self.dicts = dicts
 
     def __getitem__(self, key):
@@ -289,7 +303,7 @@ class MergeDict(object):
         return self.__copy__()
 
 
-class LocalCache(OrderedDict):
+class LocalCache(collections.OrderedDict):
     """Dictionary with a finite number of keys.
 
     Older items expires first.
@@ -304,3 +318,13 @@ class LocalCache(OrderedDict):
         while len(self) >= self.limit:
             self.popitem(last=False)
         super(LocalCache, self).__setitem__(key, value)
+
+
+class SequenceExclude(object):
+    """Object to test if an item is NOT within some sequence."""
+
+    def __init__(self, seq):
+        self.seq = seq
+
+    def __contains__(self, item):
+        return item not in self.seq

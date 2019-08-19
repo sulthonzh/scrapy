@@ -11,12 +11,13 @@ from six import BytesIO
 from twisted.trial import unittest
 from twisted.internet import defer
 
-from scrapy.pipelines.files import FilesPipeline, FSFilesStore, S3FilesStore
+from scrapy.pipelines.files import FilesPipeline, FSFilesStore, S3FilesStore, GCSFilesStore
 from scrapy.item import Item, Field
 from scrapy.http import Request, Response
 from scrapy.settings import Settings
 from scrapy.utils.python import to_bytes
 from scrapy.utils.test import assert_aws_environ, get_s3_content_and_delete
+from scrapy.utils.test import assert_gcs_environ, get_gcs_content_and_delete
 from scrapy.utils.boto import is_botocore
 
 from tests import mock
@@ -107,44 +108,6 @@ class FilesPipelineTestCase(unittest.TestCase):
             p.stop()
 
 
-class DeprecatedFilesPipeline(FilesPipeline):
-    def file_key(self, url):
-        media_guid = hashlib.sha1(to_bytes(url)).hexdigest()
-        media_ext = os.path.splitext(url)[1]
-        return 'empty/%s%s' % (media_guid, media_ext)
-
-
-class DeprecatedFilesPipelineTestCase(unittest.TestCase):
-    def setUp(self):
-        self.tempdir = mkdtemp()
-
-    def init_pipeline(self, pipeline_class):
-        self.pipeline = pipeline_class.from_settings(Settings({'FILES_STORE': self.tempdir}))
-        self.pipeline.download_func = _mocked_download_func
-        self.pipeline.open_spider(None)
-
-    def test_default_file_key_method(self):
-        self.init_pipeline(FilesPipeline)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            self.assertEqual(self.pipeline.file_key("https://dev.mydeco.com/mydeco.pdf"),
-                             'full/c9b564df929f4bc635bdd19fde4f3d4847c757c5.pdf')
-            self.assertEqual(len(w), 1)
-            self.assertTrue('file_key(url) method is deprecated' in str(w[-1].message))
-
-    def test_overridden_file_key_method(self):
-        self.init_pipeline(DeprecatedFilesPipeline)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            self.assertEqual(self.pipeline.file_path(Request("https://dev.mydeco.com/mydeco.pdf")),
-                             'empty/c9b564df929f4bc635bdd19fde4f3d4847c757c5.pdf')
-            self.assertEqual(len(w), 1)
-            self.assertTrue('file_key(url) method is deprecated' in str(w[-1].message))
-
-    def tearDown(self):
-        rmtree(self.tempdir)
-
-
 class FilesPipelineTestCaseFields(unittest.TestCase):
 
     def test_item_fields_default(self):
@@ -208,7 +171,7 @@ class FilesPipelineTestCaseCustomSettings(unittest.TestCase):
             return "".join([chr(random.randint(97, 123)) for _ in range(10)])
 
         settings = {
-            "FILES_EXPIRES": random.randint(1, 1000),
+            "FILES_EXPIRES": random.randint(100, 1000),
             "FILES_URLS_FIELD": random_string(),
             "FILES_RESULT_FIELD": random_string(),
             "FILES_STORE": self.tempdir
@@ -373,6 +336,34 @@ class TestS3FilesStore(unittest.TestCase):
             self.assertEqual(
                 key.cache_control, S3FilesStore.HEADERS['Cache-Control'])
             self.assertEqual(key.content_type, 'image/png')
+
+
+class TestGCSFilesStore(unittest.TestCase):
+    @defer.inlineCallbacks
+    def test_persist(self):
+        assert_gcs_environ()
+        uri = os.environ.get('GCS_TEST_FILE_URI')
+        if not uri:
+            raise unittest.SkipTest("No GCS URI available for testing")
+        data = b"TestGCSFilesStore: \xe2\x98\x83"
+        buf = BytesIO(data)
+        meta = {'foo': 'bar'}
+        path = 'full/filename'
+        store = GCSFilesStore(uri)
+        store.POLICY = 'authenticatedRead'
+        expected_policy = {'role': 'READER', 'entity': 'allAuthenticatedUsers'}
+        yield store.persist_file(path, buf, info=None, meta=meta, headers=None)
+        s = yield store.stat_file(path, info=None)
+        self.assertIn('last_modified', s)
+        self.assertIn('checksum', s)
+        self.assertEqual(s['checksum'], 'zc2oVgXkbQr2EQdSdw3OPA==')
+        u = urlparse(uri)
+        content, acl, blob = get_gcs_content_and_delete(u.hostname, u.path[1:]+path)
+        self.assertEqual(content, data)
+        self.assertEqual(blob.metadata, {'foo': 'bar'})
+        self.assertEqual(blob.cache_control, GCSFilesStore.CACHE_CONTROL)
+        self.assertEqual(blob.content_type, 'application/octet-stream')
+        self.assertIn(expected_policy, acl)
 
 
 class ItemWithFiles(Item):

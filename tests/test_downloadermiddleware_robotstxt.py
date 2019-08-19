@@ -1,5 +1,5 @@
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import
-import re
 from twisted.internet import reactor, error
 from twisted.internet.defer import Deferred, DeferredList, maybeDeferred
 from twisted.python import failure
@@ -30,11 +30,16 @@ class RobotsTxtMiddlewareTest(unittest.TestCase):
     def _get_successful_crawler(self):
         crawler = self.crawler
         crawler.settings.set('ROBOTSTXT_OBEY', True)
-        ROBOTS = re.sub(b'^\s+(?m)', b'', b'''
-        User-Agent: *
-        Disallow: /admin/
-        Disallow: /static/
-        ''')
+        ROBOTS = u"""
+User-Agent: *
+Disallow: /admin/
+Disallow: /static/
+# taken from https://en.wikipedia.org/robots.txt
+Disallow: /wiki/K%C3%A4ytt%C3%A4j%C3%A4:
+Disallow: /wiki/Käyttäjä:
+User-Agent: UnicödeBöt
+Disallow: /some/randome/page.html
+""".encode('utf-8')
         response = TextResponse('http://site.local/robots.txt', body=ROBOTS)
         def return_response(request, spider):
             deferred = Deferred()
@@ -48,7 +53,9 @@ class RobotsTxtMiddlewareTest(unittest.TestCase):
         return DeferredList([
             self.assertNotIgnored(Request('http://site.local/allowed'), middleware),
             self.assertIgnored(Request('http://site.local/admin/main'), middleware),
-            self.assertIgnored(Request('http://site.local/static/'), middleware)
+            self.assertIgnored(Request('http://site.local/static/'), middleware),
+            self.assertIgnored(Request('http://site.local/wiki/K%C3%A4ytt%C3%A4j%C3%A4:'), middleware),
+            self.assertIgnored(Request(u'http://site.local/wiki/Käyttäjä:'), middleware)
         ], fireOnOneErrback=True)
 
     def test_robotstxt_ready_parser(self):

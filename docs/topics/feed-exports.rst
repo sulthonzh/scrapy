@@ -164,6 +164,11 @@ The feeds are stored in a FTP server.
  * Example URI: ``ftp://user:pass@ftp.example.com/path/to/export.csv``
  * Required external libraries: none
 
+FTP supports two different connection modes: `active or passive
+<https://stackoverflow.com/a/1699163>`_. Scrapy uses the passive connection
+mode by default. To use the active connection mode instead, set the
+:setting:`FEED_STORAGE_FTP_ACTIVE` setting to ``True``.
+
 .. _topics-feed-storage-s3:
 
 S3
@@ -177,13 +182,17 @@ The feeds are stored on `Amazon S3`_.
    * ``s3://mybucket/path/to/export.csv``
    * ``s3://aws_key:aws_secret@mybucket/path/to/export.csv``
 
- * Required external libraries: `botocore`_ or `boto`_
+ * Required external libraries: `botocore`_ (Python 2 and Python 3) or `boto`_ (Python 2 only)
 
 The AWS credentials can be passed as user/password in the URI, or they can be
 passed through the following settings:
 
  * :setting:`AWS_ACCESS_KEY_ID`
  * :setting:`AWS_SECRET_ACCESS_KEY`
+
+You can also define a custom ACL for exported feeds using this setting:
+
+ * :setting:`FEED_STORAGE_S3_ACL`
 
 .. _topics-feed-storage-stdout:
 
@@ -205,10 +214,13 @@ These are the settings used for configuring the feed exports:
  * :setting:`FEED_URI` (mandatory)
  * :setting:`FEED_FORMAT`
  * :setting:`FEED_STORAGES`
+ * :setting:`FEED_STORAGE_FTP_ACTIVE`
+ * :setting:`FEED_STORAGE_S3_ACL`
  * :setting:`FEED_EXPORTERS`
  * :setting:`FEED_STORE_EMPTY`
  * :setting:`FEED_EXPORT_ENCODING`
  * :setting:`FEED_EXPORT_FIELDS`
+ * :setting:`FEED_EXPORT_INDENT`
 
 .. currentmodule:: scrapy.extensions.feedexport
 
@@ -266,6 +278,22 @@ If an exporter requires a fixed set of fields (this is the case for
 is empty or None, then Scrapy tries to infer field names from the
 exported data - currently it uses field names from the first item.
 
+.. setting:: FEED_EXPORT_INDENT
+
+FEED_EXPORT_INDENT
+------------------
+
+Default: ``0``
+
+Amount of spaces used to indent the output on each level. If ``FEED_EXPORT_INDENT``
+is a non-negative integer, then array elements and object members will be pretty-printed
+with that indent level. An indent level of ``0`` (the default), or negative,
+will put each item on a new line. ``None`` selects the most compact representation.
+
+Currently implemented only by :class:`~scrapy.exporters.JsonItemExporter`
+and :class:`~scrapy.exporters.XmlItemExporter`, i.e. when you are exporting
+to ``.json`` or ``.xml``.
+
 .. setting:: FEED_STORE_EMPTY
 
 FEED_STORE_EMPTY
@@ -284,6 +312,30 @@ Default: ``{}``
 
 A dict containing additional feed storage backends supported by your project.
 The keys are URI schemes and the values are paths to storage classes.
+
+.. setting:: FEED_STORAGE_FTP_ACTIVE
+
+FEED_STORAGE_FTP_ACTIVE
+-----------------------
+
+Default: ``False``
+
+Whether to use the active connection mode when exporting feeds to an FTP server
+(``True``) or use the passive connection mode instead (``False``, default).
+
+For information about FTP connection modes, see `What is the difference between
+active and passive FTP? <https://stackoverflow.com/a/1699163>`_.
+
+.. setting:: FEED_STORAGE_S3_ACL
+
+FEED_STORAGE_S3_ACL
+-------------------
+
+Default: ``''`` (empty string)
+
+A string containing a custom ACL for feeds exported to Amazon S3 by your project.
+
+For a complete list of available values, access the `Canned ACL`_ section on Amazon S3 docs.
 
 .. setting:: FEED_STORAGES_BASE
 
@@ -349,3 +401,4 @@ format in :setting:`FEED_EXPORTERS`. E.g., to disable the built-in CSV exporter
 .. _Amazon S3: https://aws.amazon.com/s3/
 .. _boto: https://github.com/boto/boto
 .. _botocore: https://github.com/boto/botocore
+.. _Canned ACL: https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl

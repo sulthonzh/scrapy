@@ -1,7 +1,7 @@
 """
 tests: this package contains all Scrapy unittests
 
-see http://doc.scrapy.org/en/latest/contributing.html#running-tests
+see https://docs.scrapy.org/en/latest/contributing.html#running-tests
 """
 
 import os
@@ -26,9 +26,27 @@ try:
 except ImportError:
     import mock
 
-tests_datadir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'sample_data')
+tests_datadir = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                             'sample_data')
+
 
 def get_testdata(*paths):
     """Return test data"""
     path = os.path.join(tests_datadir, *paths)
-    return open(path, 'rb').read()
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+# FIXME: delete after dropping py2 support
+# Monkey patch the unittest module to prevent the
+# DeprecationWarning about assertRaisesRegexp -> assertRaisesRegex
+import six
+if six.PY2:
+    import unittest
+    import twisted.trial.unittest
+    if not getattr(unittest.TestCase, 'assertRegex', None):
+        unittest.TestCase.assertRegex = unittest.TestCase.assertRegexpMatches
+    if not getattr(unittest.TestCase, 'assertRaisesRegex', None):
+        unittest.TestCase.assertRaisesRegex = unittest.TestCase.assertRaisesRegexp
+    if not getattr(twisted.trial.unittest.TestCase, 'assertRaisesRegex', None):
+        twisted.trial.unittest.TestCase.assertRaisesRegex = twisted.trial.unittest.TestCase.assertRaisesRegexp
